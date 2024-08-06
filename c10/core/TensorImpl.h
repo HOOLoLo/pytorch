@@ -224,6 +224,12 @@ is_non_overlapping_and_dense
 #endif
 
 /**
+ * 这个 Meta 在 catch 里面用来获取对应的我们自己写的 tensor 的 meta 信息,例如:
+ * ▏ auto meta = static_cast<CustomBackendMetadata*>(const_cast<c10::TensorImpl*>
+ *                (impl)->get_backend_meta());
+ * 我们自己先定义 CustomBackendMetadata 继承 BackendMeta
+ **/
+/**
  * This structure is intended to hold additional metadata of the specific device
  * backend.
  **/
