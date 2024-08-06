@@ -247,6 +247,8 @@ struct Block {
   bool is_split() const {
     return (prev != nullptr) || (next != nullptr);
   }
+
+  // 这个函数是
   void splice(Block* before, Block* after) {
     if (before) {
       TORCH_INTERNAL_ASSERT(before->next == after);
@@ -624,7 +626,7 @@ struct ExpandableSegment {
     // NOLINTNEXTLINE(performance-no-int-to-ptr)
     return reinterpret_cast<char*>(ptr_);
   }
-
+  // size 是 当前 handle nums * segment_size_ 
   size_t size() const {
     return max_handles_ * segment_size_;
   }
@@ -1315,6 +1317,7 @@ class DeviceCachingAllocator {
   // All public methods (except the above) acquire the allocator mutex.
   // Thus, do not call a public method from another public method.
 
+  // 这个给 tensor 分配内存的入口
   Block* malloc(
       c10::DeviceIndex device,
       size_t orig_size,
@@ -1345,6 +1348,7 @@ class DeviceCachingAllocator {
     params.stat_types = get_stat_types_for_pool(pool);
 
     // First, try to get a block from the existing pool.
+    // 注意: 如果这里 block found 了,就直接使用已有的 block 了,不会去 alloc, 注意这个 alloc 名字的意思
     bool block_found =
         // Search pool
         get_free_block(params)
@@ -1364,6 +1368,14 @@ class DeviceCachingAllocator {
       // cudaMalloc. So far this function has not modified allocator state, but
       // keep in mind that any observed allocator state may change across calls
       // to alloc_block since it may release the lock.
+      // 只有在 没有找到能够装 size 的 block 的时候才会去 alloc_block
+      // 这个里面就会考虑创建新的 expandable block, 这个里面才会去 map_block
+      // 这个就是解释了为什么 map_block 里面只是创建一个个 segment, 而看不到去重复使用之前的 segment
+      // 要重复使用之前的 segment 只能通过 block 来重复使用, 当 expandable block 在虚拟地址上出现这种情况的时候 
+      // [xxxx freed xxxx][xxxxxx allocated and mapped xxxxx]
+      // 如果 freed block 装不下, 也没办法 expandable 这个 freed block 了, 只能创建新的 expandable block 或者如果 OOM 的话就触发 unmap block
+      // 只 unmap 这个 freed block 中的 handles, 这个也就解释了为什么要创建一块一块的 handle, 如果创建一大块的 handle 
+      // 即使这个 handle 分给两个 block , 在 unmap 的时候也没办法只 unmap 一个 block 了.
       block_found = alloc_block(params, false, context, lock)
           // Free enough available cached blocks to satisfy alloc and retry
           // alloc.
@@ -2391,6 +2403,8 @@ class DeviceCachingAllocator {
   // returns the smallest possible address in any segment
   // where there is enough free address space to fit size
   // may be composed of free and unmapped segments
+  //
+  // 要分清: expandable block 和 expandable segment
   Block* find_expandable_block(
       c10::DeviceIndex device,
       cudaStream_t stream,
@@ -2402,6 +2416,7 @@ class DeviceCachingAllocator {
       return b && !b->allocated && b->event_count == 0 &&
           b->stream_uses.empty();
     };
+    // 这里查找会查找一个 block 链表,直到连接起来能达到需要的 size 的大小
     auto has_available_address_space = [&](Block* b) {
       size_t bytes = 0;
       while (bytes < size && allocatable(b)) {
@@ -2420,10 +2435,12 @@ class DeviceCachingAllocator {
       if (allocatable(c->prev)) {
         c = c->prev;
       }
+      // 如果找到了就直接 return c 链表
       if (has_available_address_space(c)) {
         return c;
       }
     }
+    // 没有找到 size 足够大的就创建一个新的 block, 里面包含一个新的 expandable segment
     auto segment_size = pool->is_small ? kSmallBuffer : kLargeBuffer;
     cudaDeviceProp prop{};
     C10_CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
@@ -2468,6 +2485,7 @@ class DeviceCachingAllocator {
     pool.unmapped.erase(to_map);
     to_map->mapped = true;
 
+    // 当需要 mapped size < to_map 的 size 
     if (mapped_range.size < to_map->size) {
       // to_map -> remaining -> to_map->next(?)
       Block* remaining = new Block(
@@ -2477,13 +2495,17 @@ class DeviceCachingAllocator {
           &pool,
           static_cast<char*>(to_map->ptr) + mapped_range.size);
       remaining->mapped = false;
+      // 这里是传递 expandable_segment_ .
       remaining->expandable_segment_ = to_map->expandable_segment_;
+      // 对新增的 remaining 进行 splice
       remaining->splice(to_map, to_map->next);
       pool.unmapped.insert(remaining);
       to_map->size = mapped_range.size;
     }
-
+    // 这里 to_map 和前面的 block 合并, 前面的 block 是已经 map 了
+    // 合并的过程没有涉及到 expandable segment 的处理
     try_merge_blocks(to_map, to_map->prev, pool);
+    // 为什么需要和后面的 block 合并?
     try_merge_blocks(to_map, to_map->next, pool);
 
     pool.insert_into_blocks(to_map);
@@ -2520,6 +2542,7 @@ class DeviceCachingAllocator {
       c10::DeviceIndex device,
       cudaStream_t stream,
       BlockPool* pool,
+    // 需要的 size
       size_t size,
       const std::shared_ptr<GatheredContext>& ctx) {
     Block* candidate = find_expandable_block(device, stream, pool, size);
@@ -2527,18 +2550,22 @@ class DeviceCachingAllocator {
     // unmapped -> null
     // unmapped -> free -> *
     // free -> unmapped -> *
-
+    
+    // 先把链表中第一个 candidate map 起来,处理 size < candidate->size 的情况
     if (!candidate->mapped &&
         !map_block(candidate, std::min(candidate->size, size), ctx)) {
       return nullptr;
     }
     TORCH_INTERNAL_ASSERT(candidate->mapped);
 
+    // 当 candidate->size 小于需要的 size 的时候就继续 map 
+    // 这里每次循环都更新 candidate, 那说明 to_map 是和前面的 candidate 合并了啊
     while (candidate->size < size) {
       // invariant: free -> unmapped -> *
       // map_block will map some of unmapped and merge with free
       auto remaining = size - candidate->size;
       auto new_candidate = candidate->next;
+      // map_block 会 merge block, 所以 new_candidate 会一直最后需要的大块
       if (!map_block(
               new_candidate, std::min(remaining, candidate->next->size), ctx)) {
         return nullptr;
@@ -2629,6 +2656,7 @@ class DeviceCachingAllocator {
   /** combine previously split blocks. returns the size of the subsumed block,
    * or 0 on failure. */
   size_t try_merge_blocks(Block* dst, Block* src, BlockPool& pool) {
+    // 这里没有看到对 expandable segment 的处理
     if (!src || src->allocated || src->event_count > 0 ||
         !src->stream_uses.empty() || dst->mapped != src->mapped) {
       return 0;
@@ -2653,6 +2681,7 @@ class DeviceCachingAllocator {
     const size_t subsumed_size = src->size;
     dst->size += subsumed_size;
     // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
+    // 
     auto erased =
         src->mapped ? pool.blocks.erase(src) : pool.unmapped.erase(src);
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(erased == 1);
@@ -3123,6 +3152,13 @@ class DeviceCachingAllocator {
   void unmap_block(
       Block* block,
       const std::shared_ptr<GatheredContext>& context) {
+    // 这个 unmap 是以 block 的大小来 unmap handles 的, 不是一整个 expandable segment !!!
+    // 例如: 
+    //     当一个 100MB 的 tensor 分配 expandable segment 之后得到一个 block
+    //     当这个 block 被 free (返回到池子里, 而不是被 unmap), 到下一个 tensor （30MB）需要被分配的时候
+    //     会直接使用这个 block 且会进行 split, 新的 block 只占用一部分的 size, 新增一个 remaining block, ptr 指向后面的地址
+    //     remaining 和当前 block 是共用这个 expandable segment 的
+    //     这样当要 unmap 这个 30MB 的 block 的时候,就是 unmap 了部分的 handles
     auto unmapped = block->expandable_segment_->unmap(
         SegmentRange{block->ptr, block->size});
     if (unmapped.size == 0) {
