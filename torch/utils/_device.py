@@ -55,7 +55,7 @@ def _device_constructors():
         torch.scalar_tensor,
         torch.asarray,
     }
-
+# TorchFunctionMode 使用方法
 # NB: This is directly called from C++ in torch/csrc/Device.cpp
 class DeviceContext(TorchFunctionMode):
     def __init__(self, device):
