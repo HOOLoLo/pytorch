@@ -1031,6 +1031,7 @@ auto FunctionParameter::check(
     case ParameterType::DEVICE:
       // Allow symint to be passed in as device, but we'll specialize and
       // guard in this case.
+      // 这个地方判断了参数 obj 的类型是否是 Device
       return THPUtils_checkLong(obj) || THPUtils_checkString(obj) ||
           THPDevice_Check(obj) || torch::is_symint(py::handle(obj));
     case ParameterType::STREAM:
@@ -1507,6 +1508,7 @@ static Py_ssize_t find_param(FunctionSignature& signature, PyObject* name) {
   throw TypeError("invalid keyword arguments");
 }
 
+// 这个地方是把 参数和 对应的 signature 对应起来的
 bool FunctionSignature::parse(
     PyObject* self,
     PyObject* args,
@@ -1646,6 +1648,7 @@ bool FunctionSignature::parse(
   return true;
 }
 
+// 构造函数中初始化 signatures_
 PythonArgParser::PythonArgParser(
     const std::vector<std::string>& fmts,
     bool traceable)
@@ -1692,6 +1695,8 @@ void PythonArgParser::check_deprecated(const FunctionSignature& signature) {
   }
 }
 
+// 这个函数是 Parser 中 parse 调用的
+// signature_ 在构造函数中初始化
 PythonArgs PythonArgParser::raw_parse(
     PyObject* self,
     PyObject* args,

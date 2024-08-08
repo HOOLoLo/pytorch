@@ -51,6 +51,7 @@ static PyObject* THPDevice_pynew(
     PyObject* args,
     PyObject* kwargs) {
   HANDLE_TH_ERRORS
+  // 这里定义 parser 可以从这些 signature 中对参数做匹配
   static torch::PythonArgParser parser(
       {"device(Device device)",
        "device(std::string_view type, int64_t? index=-1)"});
@@ -60,6 +61,7 @@ static PyObject* THPDevice_pynew(
     return handle_torch_function(
         r, nullptr, args, kwargs, THPUpperModuleOfDevice, "torch");
   }
+  // 这里如果匹配到的是第一个 signature 就直接创建 device, 默认成 cpu 了? 不应该啊
   if (r.idx == 0) {
     auto device = r.device(0);
     return THPDevice_New(device);
