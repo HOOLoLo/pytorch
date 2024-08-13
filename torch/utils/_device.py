@@ -56,6 +56,7 @@ def _device_constructors():
         torch.scalar_tensor,
     }
 # TorchFunctionMode 使用方法
+# 设置 DeviceContext 后, 调用算子的时候就会都进入 torch function 做一步处理了吧
 # NB: This is directly called from C++ in torch/csrc/Device.cpp
 class DeviceContext(TorchFunctionMode):
     def __init__(self, device):

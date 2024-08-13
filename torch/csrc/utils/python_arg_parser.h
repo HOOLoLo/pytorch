@@ -819,12 +819,12 @@ inline at::Device deviceFromLong(int64_t device_index) {
       at::getAccelerator(true).value(),
       static_cast<c10::DeviceIndex>(device_index));
 }
-
 inline at::Device toDevice(PyObject* obj) {
   if (THPDevice_Check(obj)) {
     const auto device = reinterpret_cast<THPDevice*>(obj);
     return device->device;
   }
+# 这个地方处理了 obj 只是 int 的情况
   if (THPUtils_checkLong(obj)) {
     return deviceFromLong(THPUtils_unpackLong(obj));
   }

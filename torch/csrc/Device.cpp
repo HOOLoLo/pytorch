@@ -180,6 +180,13 @@ static PyObject* THPDevice_reduce(PyObject* _self, PyObject* noargs) {
 
 static PyObject* THPDevice_enter(PyObject* self, PyObject* noargs) {
   HANDLE_TH_ERRORS
+  // with torch.device('cuda') as dev:
+  //      torch.randn(2, 3)
+  // 调用这这个接口之后, 会向 PythonTorchFunctionTLS 里面 push DeviceContext。
+  // 并进入 DeviceContext 的 context  
+  // torch.xxx 函数调用时就会调用 DeviceContext 的 __torch_function__ 函数
+  // 然后生成的 pybind 绑定 randn 函数THPVariable_randn 里面 一开始是去检查是否 if(_r.has_torch_function()) {
+  // 然后 return handle_torch_function(_r, nullptr, args, kwargs, THPVariableFunctionsModule, "torch");
   py::object mode = py::module::import("torch.utils._device")
                         .attr("DeviceContext")(py::handle(self));
   at::impl::PythonTorchFunctionTLS::push_onto_stack(

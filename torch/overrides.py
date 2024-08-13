@@ -1670,7 +1670,7 @@ def _get_overloaded_args(
                 overloaded_args = [arg]
     return overloaded_args
 
-
+# 这个 handle_torch_function 和 c++ 的作用区别是什么?
 def handle_torch_function(
     public_api: Callable,
     relevant_args: Iterable[Any],
