@@ -1054,6 +1054,8 @@ def configure_extension_build():
     if not cmake_cache_vars["BUILD_FUNCTORCH"]:
         excludes.extend(["functorch", "functorch.*"])
     packages = find_packages(exclude=excludes)
+    # 这个地方是将 c++ 的代码作为 extension 加载上去 torch._C module 中的函数都是 pybind 生成的,
+    # torch/_C/__init__.py 中说明了一部分, 这个是人为加上去的, 可能会遗漏 
     C = Extension(
         "torch._C",
         libraries=main_libraries,
@@ -1463,7 +1465,8 @@ def main():
     else:
         # no extensions in BUILD_LIBTORCH_WHL mode
         extensions = []
-
+    # 这里最后调用 setuptools 中的函数 setup, 并将 extension 传进去
+    # 这个 setuptools 就是 python 原生的了
     setup(
         name=package_name,
         version=version,
