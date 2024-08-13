@@ -223,6 +223,7 @@ static auto combine_self_args(PyObject* self, PyObject* args) -> py::tuple {
 // be passed around in this way).
 const char* torch_function_mode_name = "__torch_function__";
 
+// 这个地方是处理 function mode 中的 function 的
 auto handle_torch_function(
     PyObject* self,
     const std::string& func_name,
