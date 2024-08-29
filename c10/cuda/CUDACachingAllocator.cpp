@@ -1376,6 +1376,9 @@ class DeviceCachingAllocator {
       // 如果 freed block 装不下, 也没办法 expandable 这个 freed block 了, 只能创建新的 expandable block 或者如果 OOM 的话就触发 unmap block
       // 只 unmap 这个 freed block 中的 handles, 这个也就解释了为什么要创建一块一块的 handle, 如果创建一大块的 handle 
       // 即使这个 handle 分给两个 block , 在 unmap 的时候也没办法只 unmap 一个 block 了.
+      //
+      // alloc_block 会先 find_expandable_block, 这个可以利用空间不够但是可扩展的 block 
+      // (就是当前 segment 中最后一块已经 map 但是没有分配的那块 block, 在后面增加 map (后面有 split 出来的非常大的没有 map 的 block !!!))
       block_found = alloc_block(params, false, context, lock)
           // Free enough available cached blocks to satisfy alloc and retry
           // alloc.
@@ -2416,7 +2419,7 @@ class DeviceCachingAllocator {
       return b && !b->allocated && b->event_count == 0 &&
           b->stream_uses.empty();
     };
-    // 这里查找会查找一个 block 链表,直到连接起来能达到需要的 size 的大小
+    // 这里就是查看当前这个 block 往后是否有空闲的 block (free 或者 unmapped), 合并起来能够放下需要的大小
     auto has_available_address_space = [&](Block* b) {
       size_t bytes = 0;
       while (bytes < size && allocatable(b)) {
@@ -2432,6 +2435,9 @@ class DeviceCachingAllocator {
       // we found the lowest address of an unmapped segment
       // but there might be a free segment we can also use
       // right before it
+      // 这个地方取 前一个 block 是重复利用前面空闲并扩展的核心!!!!
+      //
+      // 创建一个 expandable segment 然后 分配 block 后 split 完的是地址空间大小的 block !!!!
       if (allocatable(c->prev)) {
         c = c->prev;
       }
@@ -2457,6 +2463,9 @@ class DeviceCachingAllocator {
         devices_with_peer_access_));
 
     ExpandableSegment* es = expandable_segments_.back();
+    // 这里第一次创建 block 的大小就是关键 !!!! 第一次就给了地址空间大小的 block, 然后后面要用的时候再从内存中一块一块的取, map 到这个空间上
+    // 一小块一小块取 而不是一大块分配的原因是, 在 OOM 的时候去 release 一些 free 的 block 的时候能够更精细的释放, 
+    // 比如有一块大的 block free 了, 然后有一部分被小的 tensor 占用, 剩余部分占用的内存 还能被 unmap, 如果是一大块取的（只有一个 handle）, 剩余部分就是不能 unmap 了.  
     Block* candidate = new Block(device, stream, es->size(), pool, es->ptr());
     candidate->mapped = false;
     candidate->expandable_segment_ = es;
