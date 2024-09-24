@@ -534,6 +534,7 @@ def get_args_parser() -> ArgumentParser:
         "directory is reused for multiple runs (a unique job-level sub-directory is created with "
         "rdzv_id as the prefix).",
     )
+    # 设置不同 work 的 stdout 和 stderr 的输出, 输出到 log_dir 下面
     parser.add_argument(
         "-r",
         "--redirects",

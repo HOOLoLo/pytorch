@@ -959,8 +959,9 @@ struct C10_EXPORT ivalue::Future final : c10::intrusive_ptr_target {
     value_ = std::move(value);
     completed_ = true;
 
-    currentDevice_ = impl_.getDevice();
+    currentDevice_ = impl_.getDevice(); // 这个是获取传入的 ivalue 的device
     storages_ = std::move(actualStorages);
+    // 这个 events_ 最后是怎么同步了? 之前 profiler 看到的一些 events 不知道哪里来的原来是这里 markCompleted
     for (const c10::Device& device : usedDevices) {
       c10::Event event(impl_.type());
       event.record(impl_.getStream(device));
