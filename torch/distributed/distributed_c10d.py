@@ -2111,7 +2111,8 @@ def _new_process_group_helper(
 
             # break out of outer loop to not create any more backends
             break
-
+        # 创建完 process group 之后才把 device 和对应的 pg 注册到 backend 中
+        # 也就是说如果没有创建 cncl group, 用其他后端通信会在 getBackend 函数中报错.
         pg._register_backend(torch.device(device), backend_type, backend_class)
 
     # set group_name and group_dsec to backend
@@ -5315,6 +5316,7 @@ def _new_group_with_tag(
 
     # checks the input ranks
     if ranks is not None:
+        # ranks 是对应从大的 group 中 取出哪些 rank 来组成 group
         ranks = sorted(ranks)
         group_world_size = len(ranks)
         if group_world_size > global_world_size:
@@ -5330,6 +5332,7 @@ def _new_group_with_tag(
                     "The new group's rank should be within "
                     "the world_size set by init_process_group"
                 )
+        # 如果 当前 rank 对应的 global rank 在需要组成的 ranks 中, 那就 设置 group rank 为 当前 ranks 中对应的 idx (对应第几个 rank, ranks 被 sorted 过了) 
         if global_rank in ranks:
             group_rank = ranks.index(global_rank)
         else:
@@ -5561,6 +5564,7 @@ def new_subgroups_by_enumeration(
     # Create a mapping from rank to subgroup to check if there is any subgroup overlap.
     rank_to_ranks_dict = {}  # type: ignore[var-annotated]
     for ranks in ranks_per_subgroup_list:
+        # 这个地方是所有 rank 都要建立所有的 subgroup 吗, 如果自己不在这个 subgroup 里面也要建立?
         subgroup = new_group(
             ranks=ranks,
             timeout=timeout,

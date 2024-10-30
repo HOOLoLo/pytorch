@@ -2,7 +2,6 @@
 #include <c10/util/error.h>
 #include <torch/csrc/distributed/c10d/ProcessGroupGloo.hpp>
 
-#ifdef USE_C10D_GLOO
 
 #include <torch/csrc/distributed/c10d/FlightRecorder.hpp>
 #include <torch/csrc/distributed/c10d/GlooDeviceFactory.hpp>
@@ -111,6 +110,7 @@ void initializeStreamsEvents(
     const std::vector<at::Tensor>& tensors,
     std::vector<c10::Stream>& streams,
     std::vector<c10::Event>& events) {
+  // 每个  tensor 一个 stream 处理
   streams.reserve(tensors.size());
   events.reserve(tensors.size());
   for (const auto i : c10::irange(tensors.size())) {
@@ -615,6 +615,10 @@ ProcessGroupGloo::ProcessGroupGloo(
   workInProgress_.resize(options_->threads);
 
   threads_.resize(options_->threads);
+  // 构造函数创建的时候就开线程. runLoop 的 workerIndex 就是线程 id
+  // runloop 就是用来处理 queue 中的 work 的.
+  // 每次调用 通信,就会 enqueue AsyncWork
+  // 相对于 NCCL 来说由于是 cpu 来管理 通信任务,所以需要自己来处理, 不像 NCCL 一样把任务下发后就可以了
   for (const auto i : c10::irange(threads_.size())) {
     threads_[i] = std::thread(&ProcessGroupGloo::runLoop, this, i);
   }
@@ -655,14 +659,16 @@ std::shared_ptr<::gloo::Context> ProcessGroupGloo::getContext(uint32_t tag) {
 }
 
 void ProcessGroupGloo::runLoop(int workerIndex) {
+  // 用于 workQueue_ 互斥的 lock
   std::unique_lock<std::mutex> lock(workMutex_);
-
+  // 析构的时候才会 stop_ 为 true
   while (!stop_) {
     if (workQueue_.empty()) {
+      // 生产者消费者
       workProduceCV_.wait(lock);
       continue;
     }
-
+    // 这里 move 防止拷贝
     auto work = std::move(workQueue_.front());
     workQueue_.pop_front();
     workInProgress_[workerIndex] = work;
@@ -795,6 +801,7 @@ class AsyncBroadcastCUDAWork : public AsyncBroadcastWork {
       uint32_t tag,
       uint64_t seq)
       : AsyncBroadcastWork(context, inputs, rootRank, rootTensor, tag, seq) {
+    // 初始化 stream
     initializeStreamsEvents(inputs, streams, events);
 
     // Create pinned host side tensors.
@@ -2584,4 +2591,3 @@ void ProcessGroupGloo::enableCollectivesTiming() {
 
 } // namespace c10d
 
-#endif // USE_C10D_GLOO
