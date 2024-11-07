@@ -22,6 +22,7 @@ namespace detail {
 //
 // CUDAHooks doesn't actually contain any data, so leaking it is very benign;
 // you're probably losing only a word (the vptr in the allocated object.)
+// 上面解释了为什么要把 cuda_hooks 这个单例放在下面 getCUDAHooks 函数的外面.
 static CUDAHooksInterface* cuda_hooks = nullptr;
 
 const CUDAHooksInterface& getCUDAHooks() {
