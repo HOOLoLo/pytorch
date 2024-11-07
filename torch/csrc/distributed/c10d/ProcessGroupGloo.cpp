@@ -809,6 +809,7 @@ class AsyncBroadcastCUDAWork : public AsyncBroadcastWork {
     c10::OptionalStreamGuard guard;
     if (context_->rank == rootRank) {
       guard.reset_stream(streams[rootTensor]);
+      // 这是把 gpu 上的 tensor 拷贝到 cpu 上?
       tmp.copy_(inputs[rootTensor], /* non_blocking */ true);
     }
   }
@@ -820,6 +821,7 @@ class AsyncBroadcastCUDAWork : public AsyncBroadcastWork {
     }
 
     // Run broadcast on host side tensors.
+    // 这个 broadcast 是在 cpu 上 broadcast
     broadcast(tmp);
 
     // Kick off copy back to the CUDA tensors.
