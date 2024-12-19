@@ -1391,6 +1391,7 @@ static void registerCudaPluggableAllocator(PyObject* module) {
         TORCH_CHECK(stream, "Expected stream capture to be under way");
         c10::cuda::CUDACachingAllocator::beginAllocateToPool(
             device, mempool_id, [stream](cudaStream_t target) {
+              // 这个传的 filter 就是找到和当前 stream 相同的的那个 pool
               return target == stream;
             });
       });

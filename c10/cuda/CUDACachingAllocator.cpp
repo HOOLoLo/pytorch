@@ -2252,6 +2252,7 @@ class DeviceCachingAllocator {
   void beginAllocateToPool(
       MempoolId_t mempool_id,
       std::function<bool(cudaStream_t)> filter) {
+    // 这个 mutex 锁住 allocator 里面所有的操作. 也就是 allocator 里面 创建,释放,snapshot 啥的都是互斥的
     std::lock_guard<std::recursive_mutex> lock(mutex);
     create_or_incref_pool(mempool_id);
     for (auto it2 = captures_underway.begin(); it2 != captures_underway.end();

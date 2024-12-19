@@ -551,6 +551,7 @@ struct C10_CUDA_API MemPool {
   static MempoolId_t graph_pool_handle(bool is_user_created = true);
 
  private:
+  // 用 atomic , 不用 mutex 来解决简单的数据竞争问题.
   static std::atomic<CaptureId_t> uid_;
   static std::atomic<CaptureId_t> uuid_;
   CUDACachingAllocator::CUDAAllocator* allocator_;
